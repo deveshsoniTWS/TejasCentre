@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { AuthController } from "./auth.controller";
-import { authenticateJWT } from "../../middleware/jwt.middleware";
 
 const authRouter = Router();
 const authController = new AuthController();

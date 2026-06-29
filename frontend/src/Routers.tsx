@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+import { AuthCallbackPage } from "./pages/AuthCallbackPage";
 import { LoginPage } from "./pages/LoginPage";
 import Dashboard from "./pages/Dashboard";
 import ContactAdministrator from "./pages/ContactAdministrator";
@@ -27,6 +28,7 @@ function Routers() {
         <Route path="plant" element={<Plant />} />
       </Route>
       <Route path="/login" element={token ? <Navigate to="/" /> : <LoginPage />} />
+      <Route path="/auth/entra/callback" element={<AuthCallbackPage />} />
       <Route path="/contact-administrator" element={<ContactAdministrator />} />
       <Route path="/select-location" element={token ? <SelectLocationPage /> : <Navigate to="/login" />} />
       <Route path="/admin" element={token ? <Admin /> : <Navigate to="/login" />}>

@@ -1,11 +1,36 @@
 import jwt from "jsonwebtoken";
+import jwksClient from "jwks-rsa";
+import { StringValue } from "ms";
+
 import { config } from "../../config/config";
 import { AuthRepository } from "./auth.repository";
-import { AccessTokenPayload, RefreshTokenPayload } from "./auth.types";
-import { StringValue } from "ms";
+import { AccessTokenPayload } from "./auth.types";
 import { errorResponse, successResponse, } from "../../utils/ErrorSuccessResponse";
+
 import { ErrorResponseType, SuccessResponseType, } from "../../utils/types";
-import { StatusMessages, StatusCodes, } from "../../constants/constants";
+
+import { StatusCodes, StatusMessages, } from "../../constants/constants";
+
+interface EntraLoginResponse {
+    accessToken: string;
+}
+
+const jwks = jwksClient({
+    jwksUri: `https://login.microsoftonline.com/${config.ENTRA_TENANT_ID}/discovery/v2.0/keys`,
+});
+
+
+function getSigningKey(header: any, callback: any) {
+    jwks.getSigningKey(header.kid, (err, key) => {
+        if (err) return callback(err);
+
+        const signingKey =
+            (key as any)?.getPublicKey?.() ||
+            (key as any)?.publicKey;
+
+        callback(null, signingKey);
+    });
+}
 
 export class AuthService {
     private authRepository: AuthRepository;
@@ -13,9 +38,6 @@ export class AuthService {
     constructor() {
         this.authRepository = new AuthRepository();
     }
-
-
-    // ENTRA LOGIN REDIRECT URL
 
     entraLogin(): string {
         const params = new URLSearchParams({
@@ -26,13 +48,18 @@ export class AuthService {
             scope: "openid profile email",
         });
 
-        return `https://login.microsoftonline.com/${config.ENTRA_TENANT_ID!}/oauth2/v2.0/authorize?${params.toString()}`;
+        return `https://login.microsoftonline.com/${config.ENTRA_TENANT_ID}/oauth2/v2.0/authorize?${params.toString()}`;
     }
 
-    // ENTRA CALLBACK
-    async entraCallback(code: string): Promise<
-        SuccessResponseType<any> | ErrorResponseType
-    > {
+    /**
+     * Handle Entra callback:
+     * 1. Exchange auth code for tokens
+     * 2. Verify ID token via JWKS
+     * 3. Map user + permissions
+     * 4. Issue internal JWT (access token only)
+     */
+    async entraCallback( code: string ): Promise<SuccessResponseType<EntraLoginResponse> | ErrorResponseType> {
+        // Exchange code for tokens
         const params = new URLSearchParams({
             client_id: config.ENTRA_CLIENT_ID!,
             client_secret: config.ENTRA_CLIENT_SECRET!,
@@ -42,11 +69,12 @@ export class AuthService {
         });
 
         const response = await fetch(
-            `https://login.microsoftonline.com/${config.ENTRA_TENANT_ID!}/oauth2/v2.0/token`,
+            `https://login.microsoftonline.com/${config.ENTRA_TENANT_ID}/oauth2/v2.0/token`,
             {
                 method: "POST",
                 headers: {
-                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Content-Type":
+                        "application/x-www-form-urlencoded",
                 },
                 body: params.toString(),
             }
@@ -55,23 +83,46 @@ export class AuthService {
         const data = await response.json();
 
         if (data.error) {
-            throw new Error(data.error_description || "Entra login failed");
+            return errorResponse(
+                data.error_description || "Entra login failed",
+                StatusCodes.UNAUTHORIZED
+            );
         }
 
-        // Decode ID token safely
-        const decoded: any = jwt.decode(data.id_token);
+        /**
+         * VERIFY ID TOKEN (IMPORTANT SECURITY STEP)
+         */
+        const decoded: any = await new Promise((resolve, reject) => {
+            jwt.verify(
+                data.id_token,
+                getSigningKey,
+                {
+                    audience: config.ENTRA_CLIENT_ID,
+                    issuer: `https://login.microsoftonline.com/${config.ENTRA_TENANT_ID}/v2.0`,
+                },
+                (err, decoded) => {
+                    if (err) return reject(err);
+                    resolve(decoded);
+                }
+            );
+        });
 
         const username = decoded?.preferred_username;
 
         if (!username) {
             return errorResponse(
-                "Invalid Entra token",
+                "Invalid Entra token payload",
                 StatusCodes.UNAUTHORIZED
             );
         }
 
+        /**
+         * FIND USER IN DB
+         */
         const user =
-            await this.authRepository.findActiveUserByUsername(username);
+            await this.authRepository.findActiveUserByUsername(
+                username
+            );
 
         if (!user) {
             return errorResponse(
@@ -80,32 +131,39 @@ export class AuthService {
             );
         }
 
+        /**
+         * LOAD RBAC DATA
+         */
         const userWithPermissions =
-            await this.authRepository.findUserWithPermissions(user.id);
+            await this.authRepository.findUserWithPermissions(
+                user.id
+            );
 
-        const accessPayload: AccessTokenPayload = {
+        /**
+         * BUILD INTERNAL ACCESS TOKEN
+         */
+        const payload: AccessTokenPayload = {
             sub: user.id,
             userName: user.userName,
             roles: userWithPermissions?.roles ?? [],
-            permissions: userWithPermissions?.permissions ?? [],
+            permissions:
+                userWithPermissions?.permissions ?? [],
         };
 
-        const refreshPayload: RefreshTokenPayload = {
-            sub: user.id,
-            tokenType: "refresh",
-        };
+        const accessToken = jwt.sign(
+            payload,
+            config.JWT_SECRET,
+            {
+                expiresIn:
+                    config.JWT_ACCESS_EXPIRES_IN as StringValue,
+            }
+        );
 
-        const accessToken = jwt.sign(accessPayload, config.JWT_SECRET, {
-            expiresIn: config.JWT_ACCESS_EXPIRES_IN as StringValue,
-        });
-
-        const refreshToken = jwt.sign(refreshPayload, config.JWT_SECRET, {
-            expiresIn: config.JWT_REFRESH_EXPIRES_IN as StringValue,
-        });
-
-        return successResponse(StatusMessages.LOGIN_SUCCESSFUL, {
-            accessToken,
-            refreshToken,
-        });
+        return successResponse(
+            StatusMessages.LOGIN_SUCCESSFUL,
+            {
+                accessToken,
+            }
+        );
     }
 }

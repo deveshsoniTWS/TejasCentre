@@ -8,18 +8,18 @@ export class AuthController {
         this.authService = new AuthService();
     }
 
-    // Redirect to Entra login
-    entraLogin = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    // Redirect user to Microsoft Entra login
+    entraLogin = async ( req: Request, res: Response, next: NextFunction ): Promise<void> => {
         try {
             const url = this.authService.entraLogin();
-            return res.redirect(url);
+            res.redirect(url);
         } catch (error) {
             next(error);
         }
     };
 
-    // Handle Entra callback
-    entraCallback = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    // Handle Microsoft Entra callback
+    entraCallback = async ( req: Request, res: Response, next: NextFunction ): Promise<void> => {
         try {
             const code = req.query.code;
 
@@ -28,6 +28,12 @@ export class AuthController {
             }
 
             const result = await this.authService.entraCallback(code);
+
+            if (!result.success) {
+                res.status(result.status).json(result);
+                return;
+            }
+
             res.status(200).json(result);
         } catch (error) {
             next(error);

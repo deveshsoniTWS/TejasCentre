@@ -26,3 +26,20 @@ app.use("/api/v1", apiRouter);
 app.get("/", (req, res) => {
   res.send("API running");
 });
+
+app.use(
+  (
+    err: Error,
+    _req: express.Request,
+    res: express.Response,
+    _next: express.NextFunction
+  ) => {
+    console.error(err);
+    res.status(500).json({
+      success: false,
+      status: 500,
+      message: err.message || "Internal server error",
+      body: null,
+    });
+  }
+);
