@@ -1,12 +1,12 @@
 import jwt from "jsonwebtoken";
 import { config } from "../../config/config";
 import { AuthRepository } from "./auth.repository";
-import { comparePassword } from "../../lib/encryptDecrypt";
-import { AuthResponse, AccessTokenPayload, RefreshTokenPayload, LoginCredentials } from "./auth.types";
+import { AccessTokenPayload, RefreshTokenPayload } from "./auth.types";
 import { StringValue } from "ms";
-import { errorResponse, successResponse } from "../../utils/ErrorSuccessResponse";
-import { ErrorResponseType, SuccessResponseType } from "../../utils/types";
-import { StatusMessages, StatusCodes } from "../../constants/constants";
+import { errorResponse, successResponse, } from "../../utils/ErrorSuccessResponse";
+import { ErrorResponseType, SuccessResponseType, } from "../../utils/types";
+import { StatusMessages, StatusCodes, } from "../../constants/constants";
+
 export class AuthService {
     private authRepository: AuthRepository;
 
@@ -14,20 +14,74 @@ export class AuthService {
         this.authRepository = new AuthRepository();
     }
 
-    // 1. Login 
-    async login(dto: LoginCredentials): Promise<SuccessResponseType<AuthResponse> | ErrorResponseType> {
-        const user = await this.authRepository.findActiveUserByUsername(dto.userName);
+
+    // ENTRA LOGIN REDIRECT URL
+
+    entraLogin(): string {
+        const params = new URLSearchParams({
+            client_id: config.ENTRA_CLIENT_ID!,
+            response_type: "code",
+            redirect_uri: config.ENTRA_REDIRECT_URI!,
+            response_mode: "query",
+            scope: "openid profile email",
+        });
+
+        return `https://login.microsoftonline.com/${config.ENTRA_TENANT_ID!}/oauth2/v2.0/authorize?${params.toString()}`;
+    }
+
+    // ENTRA CALLBACK
+    async entraCallback(code: string): Promise<
+        SuccessResponseType<any> | ErrorResponseType
+    > {
+        const params = new URLSearchParams({
+            client_id: config.ENTRA_CLIENT_ID!,
+            client_secret: config.ENTRA_CLIENT_SECRET!,
+            code,
+            redirect_uri: config.ENTRA_REDIRECT_URI!,
+            grant_type: "authorization_code",
+        });
+
+        const response = await fetch(
+            `https://login.microsoftonline.com/${config.ENTRA_TENANT_ID!}/oauth2/v2.0/token`,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                body: params.toString(),
+            }
+        );
+
+        const data = await response.json();
+
+        if (data.error) {
+            throw new Error(data.error_description || "Entra login failed");
+        }
+
+        // Decode ID token safely
+        const decoded: any = jwt.decode(data.id_token);
+
+        const username = decoded?.preferred_username;
+
+        if (!username) {
+            return errorResponse(
+                "Invalid Entra token",
+                StatusCodes.UNAUTHORIZED
+            );
+        }
+
+        const user =
+            await this.authRepository.findActiveUserByUsername(username);
+
         if (!user) {
-            return errorResponse(StatusMessages.INVALID_CREDENTIALS, StatusCodes.UNAUTHORIZED);
+            return errorResponse(
+                StatusMessages.USER_NOT_FOUND,
+                StatusCodes.NOT_FOUND
+            );
         }
 
-        // Using our custom common encryption library!
-        const passwordMatch = await comparePassword(dto.password, user.passwordHash);
-        if (!passwordMatch) {
-            return errorResponse(StatusMessages.INVALID_CREDENTIALS, StatusCodes.UNAUTHORIZED);
-        }
-
-        const userWithPermissions = await this.authRepository.findUserWithPermissions(user.id);
+        const userWithPermissions =
+            await this.authRepository.findUserWithPermissions(user.id);
 
         const accessPayload: AccessTokenPayload = {
             sub: user.id,
@@ -41,63 +95,17 @@ export class AuthService {
             tokenType: "refresh",
         };
 
-        // Sign the Access Token (expires in 15 minutes)
         const accessToken = jwt.sign(accessPayload, config.JWT_SECRET, {
             expiresIn: config.JWT_ACCESS_EXPIRES_IN as StringValue,
         });
 
-        // Sign the Refresh Token (expires in 7 days)
         const refreshToken = jwt.sign(refreshPayload, config.JWT_SECRET, {
             expiresIn: config.JWT_REFRESH_EXPIRES_IN as StringValue,
         });
 
-        return successResponse(StatusMessages.LOGIN_SUCCESSFUL, { accessToken, refreshToken });
-    }
-
-    // 2. Logout Logic (stateless)
-    logout(): SuccessResponseType{
-        return successResponse(StatusMessages.LOGOUT_SUCCESSFUL);
-    }
-
-    // 3. Refresh Token Logic
-    async refresh(refreshToken: string): Promise<SuccessResponseType<AuthResponse> | ErrorResponseType> {
-        let payload: RefreshTokenPayload;
-
-        try {
-            payload = jwt.verify(refreshToken, config.JWT_SECRET) as RefreshTokenPayload;
-        } catch {
-            return errorResponse(StatusMessages.INVALID_REFRESH_TOKEN, StatusCodes.UNAUTHORIZED);
-        }
-
-        if (payload.tokenType !== "refresh") {
-            return errorResponse(StatusMessages.INVALID_REFRESH_TOKEN, StatusCodes.UNAUTHORIZED);
-        }
-
-        const userWithPermissions = await this.authRepository.findUserWithPermissions(payload.sub);
-        if (!userWithPermissions) {
-            return errorResponse(StatusMessages.USER_NOT_FOUND, StatusCodes.NOT_FOUND);
-        }
-
-        const newAccessPayload: AccessTokenPayload = {
-            sub: payload.sub,
-            userName: userWithPermissions.userName,
-            roles: userWithPermissions.roles,
-            permissions: userWithPermissions.permissions,
-        };
-
-        const newRefreshPayload: RefreshTokenPayload = {
-            sub: payload.sub,
-            tokenType: "refresh",
-        };
-
-        const newAccessToken = jwt.sign(newAccessPayload, config.JWT_SECRET, {
-            expiresIn: config.JWT_ACCESS_EXPIRES_IN as StringValue,
+        return successResponse(StatusMessages.LOGIN_SUCCESSFUL, {
+            accessToken,
+            refreshToken,
         });
-
-        const newRefreshToken = jwt.sign(newRefreshPayload, config.JWT_SECRET, {
-            expiresIn: config.JWT_REFRESH_EXPIRES_IN as StringValue,
-        });
-
-        return successResponse(StatusMessages.TOKENS_REFRESHED_SUCCESSFULLY, { accessToken: newAccessToken, refreshToken: newRefreshToken });
     }
 }

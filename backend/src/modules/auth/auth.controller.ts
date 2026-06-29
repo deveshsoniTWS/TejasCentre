@@ -8,35 +8,29 @@ export class AuthController {
         this.authService = new AuthService();
     }
 
-    // 1. login method
-    login = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    // Redirect to Entra login
+    entraLogin = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         try {
-            const { userName, password } = req.body;
-            const result = await this.authService.login({ userName, password });
-            res.status(200).json(result);
+            const url = this.authService.entraLogin();
+            return res.redirect(url);
         } catch (error) {
-            next(error); // Passes the error to Express global error handler
+            next(error);
         }
-    }
+    };
 
-    // 2. logout method
-    logout = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    // Handle Entra callback
+    entraCallback = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         try {
-            const result = this.authService.logout();
+            const code = req.query.code;
+
+            if (typeof code !== "string") {
+                throw new Error("Missing or invalid authorization code");
+            }
+
+            const result = await this.authService.entraCallback(code);
             res.status(200).json(result);
         } catch (error) {
             next(error);
         }
-    }
-
-    // 3. refresh method
-    refresh = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-        try {
-            const { refreshToken } = req.body;
-            const result = await this.authService.refresh(refreshToken);
-            res.status(200).json(result);
-        } catch (error) {
-            next(error);
-        }
-    }
+    };
 }
