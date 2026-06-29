@@ -6,6 +6,7 @@ import authRouter from "./modules/auth/auth.router";
 import plantRouter from "./modules/plant/plant.router";
 import locationRouter from "./modules/location/location.router";
 import userRouter from "./modules/user/user.router";
+import { errorHandler } from "./middleware/error.middleware";
 
 export const app = express();
 
@@ -27,19 +28,4 @@ app.get("/", (req, res) => {
   res.send("API running");
 });
 
-app.use(
-  (
-    err: Error,
-    _req: express.Request,
-    res: express.Response,
-    _next: express.NextFunction
-  ) => {
-    console.error(err);
-    res.status(500).json({
-      success: false,
-      status: 500,
-      message: err.message || "Internal server error",
-      body: null,
-    });
-  }
-);
+app.use(errorHandler);

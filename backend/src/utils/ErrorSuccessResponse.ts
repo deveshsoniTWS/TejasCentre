@@ -11,12 +11,3 @@ export const successResponse = <T>(
     body: body ?? null,
 });
 
-export const errorResponse = (
-    message: string,
-    status = StatusCodes.INTERNAL_SERVER_ERROR
-) => ({
-    success: false,
-    status,
-    message,
-    body: null,
-});

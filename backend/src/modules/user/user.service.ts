@@ -3,10 +3,11 @@ import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { hashPassword } from "../../lib/encryptDecrypt";
 import { paginate, PaginatedResponse, PaginationQuery } from "../../lib/pagination";
-import { successResponse, errorResponse } from "../../utils/ErrorSuccessResponse";
-import { SuccessResponseType, ErrorResponseType } from "../../utils/types";
+import { successResponse } from "../../utils/ErrorSuccessResponse";
+import { SuccessResponseType } from "../../utils/types";
 import { StatusMessages, StatusCodes } from "../../constants/constants";
 import { UserItem } from "./user.types";
+import { ApiError } from "../../utils/ApiError";
 
 
 export class UserService {
@@ -16,10 +17,10 @@ export class UserService {
         this.userRepository = new UserRepository();
     }
 
-    async createUser(dto: CreateUserDto, requesterId?:string): Promise<SuccessResponseType<UserItem> | ErrorResponseType> {
+    async createUser(dto: CreateUserDto, requesterId?:string): Promise<SuccessResponseType<UserItem>> {
         const existing = await this.userRepository.findByUsername(dto.userName);
         if (existing) {
-            return errorResponse(StatusMessages.USER_ALREADY_EXISTS, StatusCodes.CONFLICT);
+            throw new ApiError( StatusCodes.CONFLICT, StatusMessages.USER_ALREADY_EXISTS);
         }
 
         const passwordHash = await hashPassword(dto.password);
@@ -33,14 +34,14 @@ export class UserService {
         return successResponse(StatusMessages.SUCCESS, paginate(data as UserItem[], total, pagination));
     }
 
-    async updateUser(id: string, requesterId: string, data: UpdateUserDto): Promise<SuccessResponseType<UserItem> | ErrorResponseType> {
+    async updateUser(id: string, requesterId: string, data: UpdateUserDto): Promise<SuccessResponseType<UserItem>> {
         if (id !== requesterId) {
-            return errorResponse(StatusMessages.FORBIDDEN, StatusCodes.FORBIDDEN);
+            throw new ApiError(StatusCodes.FORBIDDEN, StatusMessages.FORBIDDEN);
         }
 
         const user = await this.userRepository.findById(id);
         if (!user) {
-            return errorResponse(StatusMessages.USER_NOT_FOUND, StatusCodes.NOT_FOUND);
+            throw new ApiError(StatusCodes.NOT_FOUND, StatusMessages.USER_NOT_FOUND);
         }
 
         const updateData: { name?: string; passwordHash?: string } = {};
@@ -51,14 +52,14 @@ export class UserService {
         return successResponse(StatusMessages.USER_UPDATED, updated as UserItem);
     }
 
-    async deleteUser(id: string, requesterId: string): Promise<SuccessResponseType | ErrorResponseType> {
+    async deleteUser(id: string, requesterId: string): Promise<SuccessResponseType> {
         if (id !== requesterId) {
-            return errorResponse(StatusMessages.FORBIDDEN, StatusCodes.FORBIDDEN);
+            throw new ApiError(StatusCodes.FORBIDDEN, StatusMessages.FORBIDDEN);
         }
 
         const user = await this.userRepository.findById(id);
         if (!user) {
-            return errorResponse(StatusMessages.USER_NOT_FOUND, StatusCodes.NOT_FOUND);
+            throw new ApiError(StatusCodes.NOT_FOUND, StatusMessages.USER_NOT_FOUND);
         }
 
         await this.userRepository.softDelete(id, requesterId);

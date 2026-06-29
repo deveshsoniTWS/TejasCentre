@@ -5,9 +5,9 @@ import { StringValue } from "ms";
 import { config } from "../../config/config";
 import { AuthRepository } from "./auth.repository";
 import { AccessTokenPayload } from "./auth.types";
-import { errorResponse, successResponse, } from "../../utils/ErrorSuccessResponse";
-
-import { ErrorResponseType, SuccessResponseType, } from "../../utils/types";
+import { successResponse } from "../../utils/ErrorSuccessResponse";
+import { ApiError } from "../../utils/ApiError";
+import { SuccessResponseType } from "../../utils/types";
 
 import { StatusCodes, StatusMessages, } from "../../constants/constants";
 
@@ -58,7 +58,7 @@ export class AuthService {
      * 3. Map user + permissions
      * 4. Issue internal JWT (access token only)
      */
-    async entraCallback( code: string ): Promise<SuccessResponseType<EntraLoginResponse> | ErrorResponseType> {
+    async entraCallback( code: string ): Promise<SuccessResponseType<EntraLoginResponse>> {
         // Exchange code for tokens
         const params = new URLSearchParams({
             client_id: config.ENTRA_CLIENT_ID!,
@@ -83,9 +83,9 @@ export class AuthService {
         const data = await response.json();
 
         if (data.error) {
-            return errorResponse(
+            throw new ApiError(
+                StatusCodes.UNAUTHORIZED,
                 data.error_description || "Entra login failed",
-                StatusCodes.UNAUTHORIZED
             );
         }
 
@@ -110,9 +110,9 @@ export class AuthService {
         const username = decoded?.preferred_username;
 
         if (!username) {
-            return errorResponse(
-                "Invalid Entra token payload",
-                StatusCodes.UNAUTHORIZED
+            throw new ApiError(
+                StatusCodes.UNAUTHORIZED,
+                "Invalid Entra token payload"
             );
         }
 
@@ -125,9 +125,9 @@ export class AuthService {
             );
 
         if (!user) {
-            return errorResponse(
-                StatusMessages.USER_NOT_FOUND,
-                StatusCodes.NOT_FOUND
+            throw new ApiError(
+                StatusCodes.NOT_FOUND,
+                StatusMessages.USER_NOT_FOUND
             );
         }
 
