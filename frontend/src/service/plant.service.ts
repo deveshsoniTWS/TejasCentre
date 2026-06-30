@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL;
+import { api } from "../utils/api"
 
 type GetPlantsParams = {
   page?: number;
@@ -10,30 +10,19 @@ type GetPlantsParams = {
 const getPlants = async ({
   page = 1,
   limit = 100,
-  name = '',
+  name = "",
   locationId,
 }: GetPlantsParams = {}) => {
-  try {
-    const params = new URLSearchParams({
-      page: String(page),
-      limit: String(limit),
-      ...(name && { name }),
-      ...(locationId && { locationId }),
-    });
-    const res = await fetch(`${API_URL}/plants?${params}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-    if (!res.ok) {
-      throw new Error('Failed to fetch plants');
-    }
-    return await res.json();
-  } catch (error) {
-    console.error(error);
-    throw error;
-  }
+  const { data } = await api.get("/plants", {
+    params: {
+      page,
+      limit,
+      name: name || undefined,
+      locationId,
+    },
+  });
+
+  return data;
 };
 
 export { getPlants };
