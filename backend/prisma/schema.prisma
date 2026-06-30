@@ -14,7 +14,9 @@ datasource db {
 model User {
   id           String   @id @default(uuid())
   userName     String   @unique @map("user_name")
+  designation  String?
   name         String?
+  contact      String?
   passwordHash String   @map("password_hash")
   createdAt    DateTime @default(now()) @map("created_at")
   createdBy    String?  @map("created_by")
@@ -102,6 +104,7 @@ model Plant {
   id          String    @id @default(uuid())
   name        String    @unique
   description String?
+  image       String?
   createdAt   DateTime  @default(now()) @map("created_at")
   createdBy   String?   @map("created_by")
   updatedAt   DateTime? @updatedAt @map("updated_at")
@@ -117,7 +120,14 @@ model Plant {
 model Location {
   id          String    @id @default(uuid())
   name        String    @unique
+  businessUnit String?  @map("business_unit")
   description String?
+  image       String?
+  address     String?
+  city        String?
+  state       String?
+  zipCode     String?   @map("zip_code")
+  country     String?   
   createdAt   DateTime  @default(now()) @map("created_at")
   createdBy   String?   @map("created_by")
   updatedAt   DateTime? @updatedAt @map("updated_at")

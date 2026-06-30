@@ -14,7 +14,7 @@ export class LocationService {
 
   async getLocations(query: Record<string, any>): Promise<SuccessResponseType<PaginatedResponse<LocationItem>>> {
     const pagination = parsePagination(query);
-    const { data, total } = await this.locationRepository.findMany(pagination, query.name);
+    const { data, total } = await this.locationRepository.findMany(pagination, query.name, query.plantId);
     return successResponse(StatusMessages.SUCCESS,paginate(data as LocationItem[], total, pagination));
   }
 }

@@ -1,20 +1,21 @@
 import { useEffect, useState } from 'react';
 import OrganizationCard from './OrganizationCard';
-import { locationsData, plantsData } from '../../staticData';
 import { getPlants } from '../../service/plant.service';
+import { getLocations } from '../../service/location.service';
+import { resolveCardImage } from '../../utils/cardImage';
 
 interface Location {
     id: string;
     name: string;
-    description: string;
-    image: string;
+    description: string | null;
+    image: string | null;
 }
 
 interface Plant {
     id: string;
     name: string;
-    description: string;
-    image: string;
+    description: string | null;
+    image: string | null;
 }
 
 type BreadcrumbItem = {
@@ -23,14 +24,12 @@ type BreadcrumbItem = {
     plantId?: string;
 };
 
-
-
 function Plant() {
     const [plants, setPlants] = useState<Plant[]>([]);
     const [locations, setLocations] = useState<Location[]>([]);
+    const [isLoadingPlants, setIsLoadingPlants] = useState(true);
     const [isLoadingLocations, setIsLoadingLocations] = useState(false);
 
-    // breadcrumbs drive the current view
     const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([
         { label: 'Plant', view: 'plant' },
     ]);
@@ -39,26 +38,27 @@ function Plant() {
 
     useEffect(() => {
         const fetchPlants = async () => {
+            setIsLoadingPlants(true);
             try {
-                // const res = await getPlants();  //call here the service to fetch all the plants 
-                // const data = res.body.data;
-                setPlants(plantsData);
+                const res = await getPlants();
+                setPlants(res.body?.data ?? []);
             } catch (error) {
                 console.error(error);
+            } finally {
+                setIsLoadingPlants(false);
             }
-        }
+        };
         fetchPlants();
     }, []);
 
-    // Fetch locations whenever we navigate into a plant
     useEffect(() => {
         if (currentView.view !== 'location' || !currentView.plantId) return;
 
         const fetchLocations = async () => {
             setIsLoadingLocations(true);
             try {
-                // const locations = await getLocationsByPlant(currentView.label); // call here the service to fetch locations by plant
-                setLocations(locationsData);
+                const res = await getLocations({ plantId: currentView.plantId });
+                setLocations(res.body?.data ?? []);
             } catch (error) {
                 console.error(error);
             } finally {
@@ -80,9 +80,7 @@ function Plant() {
         ]);
     };
 
-    // Navigate to a specific breadcrumb by index (clicking a crumb)
     const handleBreadcrumbClick = (index: number) => {
-        // Clicking the last (active) crumb does nothing
         if (index === breadcrumbs.length - 1) return;
         setBreadcrumbs((prev) => prev.slice(0, index + 1));
         if (breadcrumbs[index].view === 'plant') {
@@ -94,7 +92,6 @@ function Plant() {
         <div className="flex flex-col h-full p-4">
             <div className="flex-1 overflow-auto">
 
-                {/* Breadcrumb bar */}
                 <div className="flex flex-row flex-wrap items-center gap-1 h-auto bg-surface-card mb-2">
                     {breadcrumbs.map((crumb, index) => {
                         const isLast = index === breadcrumbs.length - 1;
@@ -124,26 +121,29 @@ function Plant() {
                     })}
                 </div>
 
-                {/* Plants view */}
                 {currentView.view === 'plant' && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 py-4 w-full">
-                        {plants.length === 0 && (
+                        {isLoadingPlants && (
+                            <div className="flex flex-col items-center justify-center h-full col-span-full">
+                                <h2 className="text-lg font-medium text-text-heading">Loading plants...</h2>
+                            </div>
+                        )}
+                        {!isLoadingPlants && plants.length === 0 && (
                             <div className="flex flex-col items-center justify-center h-full col-span-full">
                                 <h2 className="text-lg font-medium text-text-heading">No plants found</h2>
                             </div>
                         )}
-                        {plants.map((plant, index) => (
+                        {!isLoadingPlants && plants.map((plant) => (
                             <OrganizationCard
-                                key={index}
+                                key={plant.id}
                                 name={plant.name}
-                                image={plant.image}
+                                image={resolveCardImage(plant.image, plant.name)}
                                 onclick={() => handlePlantClick(plant)}
                             />
                         ))}
                     </div>
                 )}
 
-                {/* Locations view */}
                 {currentView.view === 'location' && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 py-4 w-full">
                         {isLoadingLocations && (
@@ -156,11 +156,11 @@ function Plant() {
                                 <h2 className="text-lg font-medium text-text-heading">No locations found</h2>
                             </div>
                         )}
-                        {!isLoadingLocations && locations.map((location, index) => (
+                        {!isLoadingLocations && locations.map((location) => (
                             <OrganizationCard
-                                key={index}
+                                key={location.id}
                                 name={location.name}
-                                image={location.image}
+                                image={resolveCardImage(location.image, location.name)}
                                 onclick={() => {/* handle location click if needed */ }}
                             />
                         ))}

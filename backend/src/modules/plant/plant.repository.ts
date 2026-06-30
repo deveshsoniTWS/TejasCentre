@@ -20,7 +20,7 @@ export class PlantRepository {
         where,
         skip,
         take: limit,
-        select: { id: true, name: true, description: true },
+        select: { id: true, name: true, description: true, image: true },
       }),
       prisma.plant.count({ where }),
     ]);

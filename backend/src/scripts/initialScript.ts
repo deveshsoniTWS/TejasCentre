@@ -1,134 +1,313 @@
 import { prisma } from "../lib/prisma";
 import * as bcrypt from 'bcrypt';
 
-async function createSuperAdmin() {
+async function init() {
   try {
-    console.log('🚀 Starting Super Admin setup...\n');
+    console.log("🚀 Initializing database...\n");
 
-    // 1. Create SuperAdmin Role
-    console.log('📝 Creating SuperAdmin role...');
-    const superAdminRole = await prisma.role.upsert({
-      where: { name: 'SuperAdmin' },
-      update: {},
-      create: {
-        name: 'SuperAdmin',
-        description: 'Super Administrator with full system access',
-        createdBy: 'system',
-      },
-    });
-    console.log(`✅ SuperAdmin role created: ${superAdminRole.id}\n`);
+    // =====================================================
+    // Roles
+    // =====================================================
 
-    // 2. Create Permissions
-    console.log('📝 Creating permissions...');
-    const permissions = [
-      { name: 'user.create', description: 'Create users' },
-      { name: 'user.read', description: 'View users' },
-      { name: 'user.update', description: 'Update users' },
-      { name: 'user.delete', description: 'Delete users' },
-      { name: 'role.create', description: 'Create roles' },
-      { name: 'role.read', description: 'View roles' },
-      { name: 'role.update', description: 'Update roles' },
-      { name: 'role.delete', description: 'Delete roles' },
-      { name: 'permission.create', description: 'Create permissions' },
-      { name: 'permission.read', description: 'View permissions' },
-      { name: 'permission.update', description: 'Update permissions' },
-      { name: 'permission.delete', description: 'Delete permissions' },
-      { name: 'system.configure', description: 'Configure system settings' },
-    ];
+    const roleNames = ["SuperAdmin", "Admin", "User"];
 
-    const createdPermissions = [];
-    for (const permission of permissions) {
-      const created = await prisma.permission.upsert({
-        where: { name: permission.name },
+    const roles = new Map<string, string>();
+
+    for (const role of roleNames) {
+      const created = await prisma.role.upsert({
+        where: { name: role },
         update: {},
         create: {
-          name: permission.name,
-          description: permission.description,
-          createdBy: 'system',
+          name: role,
+          createdBy: "system",
         },
       });
-      createdPermissions.push(created);
-      console.log(`  ✓ ${permission.name}`);
-    }
-    console.log(`✅ Created ${createdPermissions.length} permissions\n`);
 
-    // 3. Assign all permissions to SuperAdmin role
-    console.log('📝 Assigning permissions to SuperAdmin role...');
-    for (const permission of createdPermissions) {
+      roles.set(role, created.id);
+    }
+
+    console.log("✅ Roles created");
+
+    // =====================================================
+    // Permissions
+    // =====================================================
+
+    const permissions = [
+      // Users
+      "user.create",
+      "user.read",
+      "user.update",
+      "user.delete",
+
+      // Areas (Plants)
+      "area.create",
+      "area.read",
+      "area.update",
+      "area.delete",
+
+      // Locations
+      "location.create",
+      "location.read",
+      "location.update",
+      "location.delete",
+
+      // Roles
+      "role.create",
+      "role.read",
+      "role.update",
+      "role.delete",
+
+      // Permissions
+      "permission.create",
+      "permission.read",
+      "permission.update",
+      "permission.delete",
+
+      // System
+      "system.configure",
+    ];
+
+    const permissionMap = new Map<string, string>();
+
+    for (const permission of permissions) {
+      const created = await prisma.permission.upsert({
+        where: { name: permission },
+        update: {},
+        create: {
+          name: permission,
+          createdBy: "system",
+        },
+      });
+
+      permissionMap.set(permission, created.id);
+    }
+
+    console.log(`✅ ${permissions.length} permissions created`);
+
+    // =====================================================
+    // SuperAdmin gets everything
+    // =====================================================
+
+    for (const permissionId of permissionMap.values()) {
       await prisma.rolePermission.upsert({
         where: {
           roleId_permissionId: {
-            roleId: superAdminRole.id,
-            permissionId: permission.id,
+            roleId: roles.get("SuperAdmin")!,
+            permissionId,
           },
         },
         update: {},
         create: {
-          roleId: superAdminRole.id,
-          permissionId: permission.id,
-          createdBy: 'system',
+          roleId: roles.get("SuperAdmin")!,
+          permissionId,
+          createdBy: "system",
         },
       });
     }
-    console.log(`✅ Assigned all ${createdPermissions.length} permissions to SuperAdmin\n`);
 
-    // 4. Create Super Admin User
-    console.log('📝 Creating super admin user...');
-    const hashedPassword = await bcrypt.hash('adminPassword', 10);
+    // =====================================================
+    // Admin permissions
+    // =====================================================
 
-    const adminUser = await prisma.user.upsert({
-      where: { userName: 'admin@admin.com' },
+    const adminPermissions = permissions.filter(
+      (p) => !p.startsWith("permission.") && p !== "system.configure"
+    );
+
+    for (const permission of adminPermissions) {
+      await prisma.rolePermission.upsert({
+        where: {
+          roleId_permissionId: {
+            roleId: roles.get("Admin")!,
+            permissionId: permissionMap.get(permission)!,
+          },
+        },
+        update: {},
+        create: {
+          roleId: roles.get("Admin")!,
+          permissionId: permissionMap.get(permission)!,
+          createdBy: "system",
+        },
+      });
+    }
+
+    // =====================================================
+    // User permissions
+    // =====================================================
+
+    const userPermissions = [
+      "user.read",
+      "area.read",
+      "location.read",
+    ];
+
+    for (const permission of userPermissions) {
+      await prisma.rolePermission.upsert({
+        where: {
+          roleId_permissionId: {
+            roleId: roles.get("User")!,
+            permissionId: permissionMap.get(permission)!,
+          },
+        },
+        update: {},
+        create: {
+          roleId: roles.get("User")!,
+          permissionId: permissionMap.get(permission)!,
+          createdBy: "system",
+        },
+      });
+    }
+
+    console.log("✅ Role permissions assigned");
+
+    // =====================================================
+    // Super Admin User
+    // =====================================================
+
+    const passwordHash = await bcrypt.hash("adminPassword", 10);
+
+    const admin = await prisma.user.upsert({
+      where: {
+        userName: "admin@admin.com",
+      },
       update: {
-        passwordHash: hashedPassword, // Update password if user exists
+        passwordHash,
       },
       create: {
-        userName: 'admin@admin.com',
-        name: 'Super Administrator',
-        passwordHash: hashedPassword,
-        createdBy: 'system',
+        userName: "admin@admin.com",
+        name: "Super Administrator",
+        designation: "Super Admin",
+        passwordHash,
+        createdBy: "system",
       },
     });
-    console.log(`✅ Super admin user: ${adminUser.userName}\n`);
 
-    // 5. Assign SuperAdmin role to user
-    console.log('📝 Assigning SuperAdmin role to user...');
     await prisma.userRole.upsert({
       where: {
         userId_roleId: {
-          userId: adminUser.id,
-          roleId: superAdminRole.id,
+          userId: admin.id,
+          roleId: roles.get("SuperAdmin")!,
         },
       },
       update: {},
       create: {
-        userId: adminUser.id,
-        roleId: superAdminRole.id,
-        createdBy: 'system',
+        userId: admin.id,
+        roleId: roles.get("SuperAdmin")!,
+        createdBy: "system",
       },
     });
-    console.log(`✅ SuperAdmin role assigned to user\n`);
 
-    console.log('🎉 Super Admin setup completed successfully!\n');
-    console.log('═══════════════════════════════════════');
-    console.log('📋 SUPER ADMIN CREDENTIALS:');
-    console.log('═══════════════════════════════════════');
-    console.log('Username: admin@admin.com');
-    console.log('Password: adminPassword');
-    console.log('Role:     SuperAdmin');
-    console.log(`Permissions: ${createdPermissions.length} (Full Access)`);
-    console.log('═══════════════════════════════════════\n');
+    console.log("✅ Super admin created");
 
-  } catch (error) {
-    console.error('❌ Error creating super admin:', error);
-    throw error;
+    // =====================================================
+    // Locations
+    // =====================================================
+
+    const locations = [
+      "Vijayanagar",
+      "Raigarh",
+      "Salem",
+      "Sambalpur",
+    ];
+
+    const locationMap = new Map<string, string>();
+
+    for (const location of locations) {
+      const created = await prisma.location.upsert({
+        where: {
+          name: location,
+        },
+        update: {},
+        create: {
+          name: location,
+          businessUnit: "JSW Steel",
+          country: "India",
+          createdBy: "system",
+        },
+      });
+
+      locationMap.set(location, created.id);
+    }
+
+    console.log("✅ Locations seeded");
+
+    // =====================================================
+    // Plants (Areas)
+    // =====================================================
+
+    const plants = [
+      {
+        name: "Vijayanagar - Sinter Plant",
+        location: "Vijayanagar",
+      },
+      {
+        name: "Vijayanagar - Pellet Plant",
+        location: "Vijayanagar",
+      },
+      {
+        name: "Raigarh - Pellet Plant",
+        location: "Raigarh",
+      },
+      {
+        name: "BPSL - Pellet Plant",
+        location: "Sambalpur",
+      },
+      {
+        name: "Coke Oven Monitoring",
+        location: "Vijayanagar",
+      },
+      {
+        name: "Pipe Conveyor (RMHS)",
+        location: "Vijayanagar",
+      },
+      {
+        name: "Material Analysis (RMHS)",
+        location: "Vijayanagar",
+      },
+    ];
+
+    for (const plant of plants) {
+      const createdPlant = await prisma.plant.upsert({
+        where: {
+          name: plant.name,
+        },
+        update: {},
+        create: {
+          name: plant.name,
+          createdBy: "system",
+        },
+      });
+
+      await prisma.plantLocation.upsert({
+        where: {
+          plantId_locationId: {
+            plantId: createdPlant.id,
+            locationId: locationMap.get(plant.location)!,
+          },
+        },
+        update: {},
+        create: {
+          plantId: createdPlant.id,
+          locationId: locationMap.get(plant.location)!,
+          createdBy: "system",
+        },
+      });
+    }
+
+    console.log("✅ Plants seeded");
+
+    console.log("\n═══════════════════════════════════════");
+    console.log("Initialization Complete");
+    console.log("═══════════════════════════════════════");
+    console.log("Username : admin@admin.com");
+    console.log("Password : adminPassword");
+    console.log("Role     : SuperAdmin");
+    console.log("═══════════════════════════════════════");
+  } catch (err) {
+    console.error(err);
+    process.exit(1);
   } finally {
     await prisma.$disconnect();
   }
 }
 
-// Run the script
-createSuperAdmin()
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
+init();
