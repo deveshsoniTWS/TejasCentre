@@ -1,10 +1,7 @@
 import { CircularProgress } from '@mui/material'
 import { useEffect, useRef, useState } from 'react'
 
-import { exchangeEntraCode } from '../service/auth.service'
 import { closePopup, ENTRA_AUTH_MESSAGE, postToOpener } from '../utils/entraPopup'
-
-const EXCHANGE_LOCK_KEY = 'entra_code_exchange'
 
 export function AuthCallbackPage() {
   const started = useRef(false)
@@ -20,43 +17,23 @@ export function AuthCallbackPage() {
     }
 
     const params = new URLSearchParams(window.location.search)
-    const code = params.get('code')
-    const error = params.get('error_description') ?? params.get('error')
-
-    const notifyError = (message: string) => {
-      postToOpener({ type: ENTRA_AUTH_MESSAGE.ERROR, message })
-      closePopup()
-    }
-
-    const notifySuccess = (accessToken: string) => {
-      sessionStorage.removeItem(EXCHANGE_LOCK_KEY)
-      window.history.replaceState({}, '', window.location.pathname)
-      postToOpener({ type: ENTRA_AUTH_MESSAGE.SUCCESS, accessToken })
-      closePopup()
-    }
+    const accessToken = params.get('accessToken')
+    const error = params.get('error')
 
     if (error) {
-      notifyError(error)
+      postToOpener({ type: ENTRA_AUTH_MESSAGE.ERROR, message: decodeURIComponent(error) })
+      closePopup()
       return
     }
 
-    if (!code) {
-      notifyError('Missing authorization code')
+    if (!accessToken) {
+      postToOpener({ type: ENTRA_AUTH_MESSAGE.ERROR, message: 'Missing access token' })
+      closePopup()
       return
     }
 
-    if (sessionStorage.getItem(EXCHANGE_LOCK_KEY) === code) {
-      return
-    }
-
-    sessionStorage.setItem(EXCHANGE_LOCK_KEY, code)
-
-    exchangeEntraCode(code)
-      .then((response) => notifySuccess(response.body.accessToken))
-      .catch((err: Error) => {
-        sessionStorage.removeItem(EXCHANGE_LOCK_KEY)
-        notifyError(err.message)
-      })
+    postToOpener({ type: ENTRA_AUTH_MESSAGE.SUCCESS, accessToken })
+    closePopup()
   }, [])
 
   if (invalidContext) {

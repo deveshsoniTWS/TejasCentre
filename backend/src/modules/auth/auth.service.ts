@@ -58,7 +58,7 @@ export class AuthService {
      * 3. Map user + permissions
      * 4. Issue internal JWT (access token only)
      */
-    async entraCallback( code: string ): Promise<SuccessResponseType<EntraLoginResponse>> {
+    async entraCallback( code: string ): Promise<string> {
         // Exchange code for tokens
         const params = new URLSearchParams({
             client_id: config.ENTRA_CLIENT_ID!,
@@ -159,11 +159,6 @@ export class AuthService {
             }
         );
 
-        return successResponse(
-            StatusMessages.LOGIN_SUCCESSFUL,
-            {
-                accessToken,
-            }
-        );
+        return `${config.FRONTEND_URL}/auth/entra/callback?accessToken=${accessToken}`;
     }
 }

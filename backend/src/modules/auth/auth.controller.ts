@@ -27,14 +27,9 @@ export class AuthController {
                 throw new Error("Missing or invalid authorization code");
             }
 
-            const result = await this.authService.entraCallback(code);
+            const redirectUrl = await this.authService.entraCallback(code);
 
-            if (!result.success) {
-                res.status(result.status).json(result);
-                return;
-            }
-
-            res.status(200).json(result);
+            res.redirect(redirectUrl);
         } catch (error) {
             next(error);
         }
