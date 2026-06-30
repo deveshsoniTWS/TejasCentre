@@ -10,6 +10,7 @@ import { ApiError } from "../../utils/ApiError";
 import { SuccessResponseType } from "../../utils/types";
 
 import { StatusCodes, StatusMessages, } from "../../constants/constants";
+import { UserService } from "../user/user.service";
 
 interface EntraLoginResponse {
     accessToken: string;
@@ -34,9 +35,11 @@ function getSigningKey(header: any, callback: any) {
 
 export class AuthService {
     private authRepository: AuthRepository;
+    private userService: UserService;
 
     constructor() {
         this.authRepository = new AuthRepository();
+        this.userService = new UserService();
     }
 
     entraLogin(): string {
@@ -119,16 +122,24 @@ export class AuthService {
         /**
          * FIND USER IN DB
          */
-        const user =
+        let user: { id: string; userName: string } | null =
             await this.authRepository.findActiveUserByUsername(
                 username
             );
 
         if (!user) {
-            throw new ApiError(
-                StatusCodes.NOT_FOUND,
-                StatusMessages.USER_NOT_FOUND
-            );
+            const displayName = decoded?.name || username.split("@")[0];
+            const randomPassword = Math.random().toString(36).substring(2) + Date.now().toString(36);
+            const result= await this.userService.createUser({
+                userName: username,
+                password: randomPassword, 
+                name: displayName
+            });
+            if (!result || !result.body) {
+            throw new ApiError(StatusCodes.INTERNAL_SERVER_ERROR, "Failed to provision user profile");
+                }
+
+            user = result.body;
         }
 
         /**
